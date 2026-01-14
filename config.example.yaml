@@ -14,5 +14,15 @@ project:
   status_column: Status
 output:
   dry_run_report_path: out/dry_run_report.json
+  projects_output_dir: out/projects
+  llm_output_dir: out/llm
   chunk_size_chars: 4000
   chunk_overlap_chars: 400
+rag:
+  model_name: intfloat/multilingual-e5-small
+  top_k: 6
+mistral:
+  api_key: ""
+  model: mistral-small-latest
+  temperature: 0.2
+  max_tokens: 512

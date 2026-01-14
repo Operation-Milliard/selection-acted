@@ -33,6 +33,14 @@ python acted.py --config config.yaml --export-projects
 
 Chunking is configured in `config.yaml` under `output.chunk_size_chars` and `output.chunk_overlap_chars`.
 
+Local embeddings (for RAG) are configured under `rag.model_name` and `rag.top_k`.
+
+## Generate LLM answers (Mistral)
+Set `mistral.api_key` in `config.yaml` or export `MISTRAL_API_KEY`.
+```
+python acted.py --config config.yaml --llm-generate
+```
+
 ## Mark processed rows
 ```
 python acted.py --config config.yaml --mark-status
