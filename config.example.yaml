@@ -1,0 +1,16 @@
+google:
+  oauth_client_path: secrets/client_secret.json
+  token_path: secrets/token.json
+  sheets:
+    grid_spreadsheet_id: gdrive sheet id
+    grid_tab: Grille
+    responses_spreadsheet_id: 
+    responses_tab: Form responses 1
+  drive:
+    folder_id: gdrive folder id
+project:
+  name_column: Nom de la structure
+  file_column: Fichiers
+  status_column: Status
+output:
+  dry_run_report_path: out/dry_run_report.json
