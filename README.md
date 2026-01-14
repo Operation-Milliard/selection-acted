@@ -31,6 +31,8 @@ python acted.py --config config.yaml
 python acted.py --config config.yaml --export-projects
 ```
 
+Chunking is configured in `config.yaml` under `output.chunk_size_chars` and `output.chunk_overlap_chars`.
+
 ## Mark processed rows
 ```
 python acted.py --config config.yaml --mark-status

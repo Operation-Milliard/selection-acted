@@ -21,6 +21,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
 ]
 DRIVE_FILE_ID_RE = re.compile(r"(?:file/d/|open\?id=|uc\?id=)([-\w]{10,})")
+CHUNK_SIZE_CHARS = 4000
+CHUNK_OVERLAP_CHARS = 400
 
 
 def load_config(path: str | None) -> dict:
@@ -74,6 +76,18 @@ def load_config(path: str | None) -> dict:
         "dry_run_report_path": env_or_default(
             "DRY_RUN_REPORT_PATH",
             output_cfg.get("dry_run_report_path", "out/dry_run_report.json"),
+        ),
+        "chunk_size_chars": int(
+            env_or_default(
+                "CHUNK_SIZE_CHARS",
+                output_cfg.get("chunk_size_chars", CHUNK_SIZE_CHARS),
+            )
+        ),
+        "chunk_overlap_chars": int(
+            env_or_default(
+                "CHUNK_OVERLAP_CHARS",
+                output_cfg.get("chunk_overlap_chars", CHUNK_OVERLAP_CHARS),
+            )
         ),
     }
 
@@ -178,6 +192,27 @@ def extract_pdf_text(pdf_bytes: bytes) -> str:
         text = page.extract_text() or ""
         pages.append(text)
     return "\n".join(pages).strip()
+
+
+def chunk_text(text: str, size: int, overlap: int) -> list[dict]:
+    if not text:
+        return []
+    chunks = []
+    start = 0
+    length = len(text)
+    while start < length:
+        end = min(start + size, length)
+        chunks.append(
+            {
+                "start_char": start,
+                "end_char": end,
+                "text": text[start:end],
+            }
+        )
+        if end == length:
+            break
+        start = max(0, end - overlap)
+    return chunks
 
 
 def parse_grid(rows: list[list[str]]) -> list[dict]:
@@ -307,6 +342,8 @@ def export_projects(
     drive_files: list[dict],
     project_name_column: str | None,
     file_column: str,
+    chunk_size_chars: int,
+    chunk_overlap_chars: int,
     output_dir: Path,
 ) -> list[Path]:
     if not responses_rows:
@@ -352,12 +389,16 @@ def export_projects(
                 print(f"[{row_idx}] extracted {char_count} chars / {line_count} lines from {info.get('name', file_id)}")
             else:
                 print(f"[{row_idx}] no text extracted from {info.get('name', file_id)}")
+            chunks = chunk_text(text, size=chunk_size_chars, overlap=chunk_overlap_chars)
+            if chunks:
+                print(f"[{row_idx}] {len(chunks)} chunks for {info.get('name', file_id)}")
             files_payload.append(
                 {
                     "id": file_id,
                     "name": info.get("name"),
                     "mimeType": info.get("mimeType"),
                     "text": text,
+                    "chunks": chunks,
                 }
             )
 
@@ -464,6 +505,8 @@ def main() -> None:
             drive_files,
             config.get("project_name_column"),
             config["file_column"],
+            config["chunk_size_chars"],
+            config["chunk_overlap_chars"],
             output_dir,
         )
         print(f"Wrote {len(written)} project JSON files to {output_dir}")

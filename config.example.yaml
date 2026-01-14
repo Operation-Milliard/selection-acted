@@ -14,3 +14,5 @@ project:
   status_column: Status
 output:
   dry_run_report_path: out/dry_run_report.json
+  chunk_size_chars: 4000
+  chunk_overlap_chars: 400
