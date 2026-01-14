@@ -5,6 +5,7 @@ import json
 import os
 import re
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 
 import yaml
@@ -12,6 +13,8 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+from pypdf import PdfReader
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -157,6 +160,26 @@ def list_files_in_folder(credentials, folder_id: str) -> list[dict]:
     return files
 
 
+def download_drive_file(credentials, file_id: str) -> bytes:
+    service = build("drive", "v3", credentials=credentials)
+    request = service.files().get_media(fileId=file_id)
+    buffer = BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    return buffer.getvalue()
+
+
+def extract_pdf_text(pdf_bytes: bytes) -> str:
+    reader = PdfReader(BytesIO(pdf_bytes))
+    pages = []
+    for page in reader.pages:
+        text = page.extract_text() or ""
+        pages.append(text)
+    return "\n".join(pages).strip()
+
+
 def parse_grid(rows: list[list[str]]) -> list[dict]:
     questions = []
     for idx, row in enumerate(rows):
@@ -261,6 +284,95 @@ def build_report(
     }
 
 
+def sanitize_filename(value: str) -> str:
+    if not value:
+        return "project"
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", value)
+    return safe.strip("_") or "project"
+
+
+def write_project_json(output_dir: Path, project_name: str, row_number: int, payload: dict) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{sanitize_filename(project_name)}_{row_number}.json"
+    path = output_dir / filename
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+    return path
+
+
+def export_projects(
+    credentials,
+    grid_questions: list[dict],
+    responses_rows: list[list[str]],
+    drive_files: list[dict],
+    project_name_column: str | None,
+    file_column: str,
+    output_dir: Path,
+) -> list[Path]:
+    if not responses_rows:
+        return []
+
+    headers = responses_rows[0]
+    rows = responses_rows[1:]
+    drive_files_index = {item["id"]: item for item in drive_files}
+
+    project_name_idx = None
+    if project_name_column in headers:
+        project_name_idx = headers.index(project_name_column)
+
+    if file_column not in headers:
+        raise ValueError(f"Missing file column '{file_column}' in responses sheet")
+    file_column_idx = headers.index(file_column)
+
+    written = []
+    for row_idx, row in enumerate(rows, start=2):
+        project_name = row[project_name_idx] if project_name_idx is not None and len(row) > project_name_idx else ""
+        row_map = {headers[i]: row[i] for i in range(min(len(headers), len(row)))}
+        file_ids = extract_drive_file_ids(row[file_column_idx] if len(row) > file_column_idx else "")
+
+        files_payload = []
+        for file_id in file_ids:
+            info = drive_files_index.get(file_id, {"id": file_id, "name": "(not in folder list)"})
+            text = ""
+            try:
+                content = download_drive_file(credentials, file_id)
+            except Exception as exc:
+                print(f"[{row_idx}] download failed for {file_id}: {exc}")
+                content = None
+            if content is not None and info.get("mimeType") == "application/pdf":
+                try:
+                    text = extract_pdf_text(content)
+                except Exception as exc:
+                    print(f"[{row_idx}] extract failed for {info.get('name', file_id)}: {exc}")
+            elif content is not None:
+                print(f"[{row_idx}] skipped non-pdf {info.get('name', file_id)} ({info.get('mimeType')})")
+            if text:
+                char_count = len(text)
+                line_count = text.count("\n") + 1
+                print(f"[{row_idx}] extracted {char_count} chars / {line_count} lines from {info.get('name', file_id)}")
+            else:
+                print(f"[{row_idx}] no text extracted from {info.get('name', file_id)}")
+            files_payload.append(
+                {
+                    "id": file_id,
+                    "name": info.get("name"),
+                    "mimeType": info.get("mimeType"),
+                    "text": text,
+                }
+            )
+
+        payload = {
+            "row_number": row_idx,
+            "project_name": project_name,
+            "fields": row_map,
+            "grid_questions": grid_questions,
+            "files": files_payload,
+        }
+        written.append(write_project_json(output_dir, project_name, row_idx, payload))
+
+    return written
+
+
 def column_index_to_letter(index: int) -> str:
     index += 1
     letters = ""
@@ -315,10 +427,17 @@ def main() -> None:
         action="store_true",
         help="Write a human-readable date in the Status column for unprocessed rows",
     )
+    parser.add_argument(
+        "--export-projects",
+        action="store_true",
+        help="Download PDFs and write one JSON per project to out/projects",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
     credentials, grid_rows, responses_rows, drive_files = load_sources(config)
+
+    grid_questions = parse_grid(grid_rows)
 
     report = build_report(
         grid_rows,
@@ -335,6 +454,19 @@ def main() -> None:
         json.dump(report, handle, ensure_ascii=False, indent=2)
 
     print(f"Dry-run report written to {output_path}")
+
+    if args.export_projects:
+        output_dir = Path("out/projects")
+        written = export_projects(
+            credentials,
+            grid_questions,
+            responses_rows,
+            drive_files,
+            config.get("project_name_column"),
+            config["file_column"],
+            output_dir,
+        )
+        print(f"Wrote {len(written)} project JSON files to {output_dir}")
 
     if args.mark_status:
         status_value = datetime.now().strftime("%Y-%m-%d %H:%M")

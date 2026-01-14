@@ -26,6 +26,11 @@ cp config.example.yaml config.yaml
 python acted.py --config config.yaml
 ```
 
+## Export projects JSON
+```
+python acted.py --config config.yaml --export-projects
+```
+
 ## Mark processed rows
 ```
 python acted.py --config config.yaml --mark-status
