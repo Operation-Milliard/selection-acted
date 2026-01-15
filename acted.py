@@ -90,6 +90,14 @@ def load_config(path: str | None) -> dict:
             "LLM_OUTPUT_DIR",
             output_cfg.get("llm_output_dir", "out/llm"),
         ),
+        "results_spreadsheet_id": env_or_default(
+            "RESULTS_SPREADSHEET_ID",
+            output_cfg.get("results_spreadsheet_id"),
+        ),
+        "results_write_mode": env_or_default(
+            "RESULTS_WRITE_MODE",
+            output_cfg.get("results_write_mode", "skip"),
+        ),
         "chunk_size_chars": int(
             env_or_default(
                 "CHUNK_SIZE_CHARS",
@@ -131,6 +139,9 @@ def load_config(path: str | None) -> dict:
     ]
     if missing:
         raise ValueError(f"Missing config keys: {', '.join(missing)}")
+
+    if not config.get("results_spreadsheet_id"):
+        config["results_spreadsheet_id"] = config["grid_spreadsheet_id"]
 
     return config
 
@@ -198,6 +209,62 @@ def list_files_in_folder(credentials, folder_id: str) -> list[dict]:
             break
 
     return files
+
+
+def list_sheet_titles(credentials, spreadsheet_id: str) -> set[str]:
+    service = build("sheets", "v4", credentials=credentials)
+    response = service.spreadsheets().get(
+        spreadsheetId=spreadsheet_id,
+        fields="sheets(properties(title))",
+    ).execute()
+    return {sheet["properties"]["title"] for sheet in response.get("sheets", [])}
+
+
+def clear_sheet(credentials, spreadsheet_id: str, title: str) -> None:
+    service = build("sheets", "v4", credentials=credentials)
+    service.spreadsheets().values().clear(
+        spreadsheetId=spreadsheet_id,
+        range=title,
+        body={},
+    ).execute()
+
+
+def sanitize_sheet_title(value: str) -> str:
+    if not value:
+        return "Project"
+    cleaned = re.sub(r"[:\\\\/?*\\[\\]]", "_", value)
+    cleaned = cleaned.strip()
+    return cleaned or "Project"
+
+
+def ensure_unique_title(base_title: str, existing: set[str]) -> str:
+    title = base_title[:100]
+    if title not in existing:
+        return title
+    for idx in range(2, 1000):
+        suffix = f" ({idx})"
+        trimmed = title[: 100 - len(suffix)]
+        candidate = f"{trimmed}{suffix}"
+        if candidate not in existing:
+            return candidate
+    raise ValueError("Unable to generate unique sheet title")
+
+
+def ensure_sheet(credentials, spreadsheet_id: str, title: str, write_mode: str) -> str | None:
+    existing = list_sheet_titles(credentials, spreadsheet_id)
+    base_title = sanitize_sheet_title(title)
+    mode = write_mode.lower()
+    if base_title in existing:
+        if mode == "skip":
+            return None
+        if mode == "overwrite":
+            clear_sheet(credentials, spreadsheet_id, base_title)
+            return base_title
+        raise ValueError("results_write_mode must be 'skip' or 'overwrite'")
+    service = build("sheets", "v4", credentials=credentials)
+    body = {"requests": [{"addSheet": {"properties": {"title": base_title}}}]}
+    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+    return base_title
 
 
 def download_drive_file(credentials, file_id: str) -> bytes:
@@ -552,6 +619,43 @@ def export_projects(
     return written
 
 
+def write_project_sheets(
+    credentials,
+    llm_dir: Path,
+    spreadsheet_id: str,
+    write_mode: str,
+) -> None:
+    for path in sorted(llm_dir.glob("*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        project_name = data.get("project_name", "")
+        row_number = data.get("row_number", "")
+        answers = data.get("answers", [])
+
+        if not answers:
+            print(f"Skipping {path.name}: no answers")
+            continue
+
+        title = f"{project_name}_{row_number}" if project_name else f"Project_{row_number}"
+        sheet_title = ensure_sheet(credentials, spreadsheet_id, title, write_mode)
+        if sheet_title is None:
+            print(f"Skipping existing sheet for {path.name}")
+            continue
+
+        rows = [["Question", "TEXT", "QCM"]]
+        for entry in answers:
+            rows.append(
+                [
+                    entry.get("question", "") or entry.get("question_id", ""),
+                    entry.get("text", ""),
+                    entry.get("qcm", ""),
+                ]
+            )
+
+        range_a1 = f"{sheet_title}!A1:C{len(rows)}"
+        update_sheet_values(credentials, spreadsheet_id, range_a1, rows)
+        print(f"Wrote sheet {sheet_title} for {path.name}")
+
+
 def column_index_to_letter(index: int) -> str:
     index += 1
     letters = ""
@@ -620,6 +724,11 @@ def main() -> None:
         "--llm-generate",
         action="store_true",
         help="Generate LLM answers from project JSON files",
+    )
+    parser.add_argument(
+        "--write-sheets",
+        action="store_true",
+        help="Write LLM answers to one sheet per project",
     )
     args = parser.parse_args()
 
@@ -741,6 +850,15 @@ def main() -> None:
             out_path = output_dir / path.name
             out_path.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")
             print(f"Wrote LLM answers to {out_path}")
+
+    if args.write_sheets:
+        llm_dir = Path(config["llm_output_dir"])
+        write_project_sheets(
+            credentials,
+            llm_dir,
+            config["results_spreadsheet_id"],
+            config["results_write_mode"],
+        )
 
     if args.mark_status:
         status_value = datetime.now().strftime("%Y-%m-%d %H:%M")

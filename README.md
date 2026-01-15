@@ -41,6 +41,12 @@ Set `mistral.api_key` in `config.yaml` or export `MISTRAL_API_KEY`.
 python acted.py --config config.yaml --llm-generate
 ```
 
+## Write LLM answers to Google Sheets
+By default, results are written to the same spreadsheet as the grid. To target another spreadsheet, set `output.results_spreadsheet_id`. Choose `output.results_write_mode` as `skip` or `overwrite`.
+```
+python acted.py --config config.yaml --write-sheets
+```
+
 ## Mark processed rows
 ```
 python acted.py --config config.yaml --mark-status

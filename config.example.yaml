@@ -16,6 +16,8 @@ output:
   dry_run_report_path: out/dry_run_report.json
   projects_output_dir: out/projects
   llm_output_dir: out/llm
+  results_spreadsheet_id: ""
+  results_write_mode: skip
   chunk_size_chars: 4000
   chunk_overlap_chars: 400
 rag:
