@@ -839,6 +839,7 @@ def main() -> None:
                         "text": parsed.get("text", ""),
                         "qcm": parsed.get("qcm", ""),
                         "chunks_used": selected,
+                        "prompt": prompt,
                         "raw_response": response_text,
                     }
                 )
