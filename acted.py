@@ -70,6 +70,10 @@ def load_config(path: str | None) -> dict:
             "PROJECT_NAME_COLUMN",
             project_cfg.get("name_column"),
         ),
+        "description_column": env_or_default(
+            "PROJECT_DESCRIPTION_COLUMN",
+            project_cfg.get("description_column"),
+        ),
         "file_column": env_or_default(
             "FILE_COLUMN",
             project_cfg.get("file_column"),
@@ -376,7 +380,7 @@ def call_mistral(prompt: str, api_key: str, model: str, temperature: float, max_
     return data["choices"][0]["message"]["content"]
 
 
-def build_prompt(question: dict, fields: dict, chunks: list[dict]) -> str:
+def build_prompt(question: dict, fields: dict, chunks: list[dict], description: str) -> str:
     options = question.get("options") or []
     context = question.get("context") or ""
     question_text = question.get("question") or ""
@@ -397,6 +401,8 @@ def build_prompt(question: dict, fields: dict, chunks: list[dict]) -> str:
         f"QuestionID: {question_id}\n"
         f"Question: {question_text}\n"
         f"Contexte: {context}\n\n"
+        "Description du projet:\n"
+        f"{description}\n\n"
         "Reponses formulaire:\n"
         f"{fields_text}\n\n"
         "Extraits pertinents:\n"
@@ -784,6 +790,7 @@ def main() -> None:
         for path in sorted(input_dir.glob("*.json")):
             data = json.loads(path.read_text(encoding="utf-8"))
             fields = data.get("fields", {})
+            description = fields.get(config.get("description_column") or "", "")
             grid_questions = data.get("grid_questions", [])
             files = data.get("files", [])
 
@@ -816,7 +823,7 @@ def main() -> None:
                     )
                 else:
                     selected = []
-                prompt = build_prompt(question, fields, selected)
+                prompt = build_prompt(question, fields, selected, description)
                 response_text = call_mistral(
                     prompt,
                     api_key=config["mistral_api_key"],

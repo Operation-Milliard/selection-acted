@@ -20,6 +20,7 @@ Copy the example config and edit it:
 ```
 cp config.example.yaml config.yaml
 ```
+Set `project.description_column` to the exact header for the project description field.
 
 ## Run dry-run
 ```

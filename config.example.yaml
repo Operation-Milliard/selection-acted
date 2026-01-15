@@ -10,6 +10,7 @@ google:
     folder_id: gdrive folder id
 project:
   name_column: Nom de la structure
+  description_column: Description du Projet
   file_column: Fichiers
   status_column: Status
 output:
