@@ -473,12 +473,20 @@ def main() -> None:
                     temperature=config.mistral_temperature,
                     max_tokens=config.mistral_max_tokens,
                 )
+                qcm_letter = parsed.get("qcm", "")
+                qcm_text = ""
+                if qcm_letter and qcm_letter != "UNKNOWN":
+                    options = question.get("options", [])
+                    idx = ord(qcm_letter.upper()) - 65
+                    if 0 <= idx < len(options):
+                        qcm_text = options[idx]
                 answers.append(
                     {
                         "question_id": question.get("question_id"),
                         "question": question.get("question"),
                         "text": parsed.get("text", ""),
-                        "qcm": parsed.get("qcm", ""),
+                        "qcm": qcm_letter,
+                        "qcm_text": qcm_text,
                         "chunks_used": selected,
                         "prompt": prompt,
                         "raw_response": response_text,

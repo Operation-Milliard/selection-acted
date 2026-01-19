@@ -39,9 +39,11 @@ def build_prompt(question: dict, fields: dict, chunks: list[dict], description: 
     return (
         "Tu es un assistant d'analyse de dossiers de projets.\n"
         "Ta tache: repondre a la question a partir des reponses du formulaire et des extraits.\n"
+        "Ne cherche pas de liens indirects entre la question et les extrait, si des éléments de réponse ne sont pas explicitement mentionnés, ne les infère pas."
         "Retourne uniquement un JSON strict avec les cles: text, qcm.\n"
         "Pour qcm, retourne uniquement la lettre (A, B, C, etc.) correspondant a l'option choisie.\n"
-        "Si aucune option ne convient, mets qcm a \"UNKNOWN\".\n\n"
+        "Si l'information n'est pas presente dans les documents, choisis l'option qui correspond a l'absence d'information (ex: 'Non mentionne', 'Pas d'information', etc.).\n"
+        "Utilise \"UNKNOWN\" uniquement si aucune option ne correspond, meme pour l'absence d'information.\n\n"
         f"QuestionID: {question_id}\n"
         f"Question: {question_text}\n"
         f"Contexte: {context}\n\n"
