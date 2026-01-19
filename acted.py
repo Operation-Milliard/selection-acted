@@ -67,14 +67,6 @@ def ensure_sheet(credentials, spreadsheet_id: str, title: str, write_mode: str) 
 
 
 
-
-
-
-
-
-    return {}
-
-
 def parse_grid(rows: list[list[str]]) -> list[dict]:
     questions = []
     for idx, row in enumerate(rows):
