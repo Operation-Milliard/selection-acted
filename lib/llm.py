@@ -31,12 +31,16 @@ def build_prompt(question: dict, fields: dict, chunks: list[dict], description: 
         f"[chunk score={chunk['score']:.3f} start={chunk['start_char']}]\n{chunk['text']}"
         for chunk in chunks
     )
-    options_text = "\n".join(f"- {opt}" for opt in options) if options else "Aucune option fournie."
+    if options:
+        options_text = "\n".join(f"{chr(65 + i)}. {opt}" for i, opt in enumerate(options))
+    else:
+        options_text = "Aucune option fournie."
 
     return (
         "Tu es un assistant d'analyse de dossiers de projets.\n"
         "Ta tache: repondre a la question a partir des reponses du formulaire et des extraits.\n"
         "Retourne uniquement un JSON strict avec les cles: text, qcm.\n"
+        "Pour qcm, retourne uniquement la lettre (A, B, C, etc.) correspondant a l'option choisie.\n"
         "Si aucune option ne convient, mets qcm a \"UNKNOWN\".\n\n"
         f"QuestionID: {question_id}\n"
         f"Question: {question_text}\n"
@@ -64,3 +68,40 @@ def parse_llm_json(text: str) -> dict:
         except json.JSONDecodeError:
             return {}
     return {}
+
+
+def validate_qcm(answer: str, options: list[str]) -> bool:
+    """Check if answer is a valid letter for the given options."""
+    if not options:
+        return True
+    if answer == "UNKNOWN":
+        return True
+    valid_letters = [chr(65 + i) for i in range(len(options))]
+    return answer.upper() in valid_letters
+
+
+def call_mistral_with_validation(
+    prompt: str,
+    options: list[str],
+    api_key: str,
+    model: str,
+    temperature: float,
+    max_tokens: int,
+    max_retries: int = 2,
+) -> tuple[str, dict]:
+    """Call Mistral and validate QCM response, retry if invalid."""
+    for attempt in range(max_retries + 1):
+        response_text = call_mistral(prompt, api_key, model, temperature, max_tokens)
+        parsed = parse_llm_json(response_text)
+        qcm = parsed.get("qcm", "")
+
+        if validate_qcm(qcm, options):
+            return response_text, parsed
+
+        if attempt < max_retries:
+            print(f"Invalid QCM '{qcm}', retrying ({attempt + 1}/{max_retries})...")
+
+    # After all retries, return last response with qcm set to UNKNOWN
+    parsed["qcm"] = "UNKNOWN"
+    parsed["validation_failed"] = True
+    return response_text, parsed

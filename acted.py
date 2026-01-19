@@ -17,7 +17,7 @@ from lib.google import (
     list_sheet_titles,
     update_sheet_values,
 )
-from lib.llm import build_prompt, call_mistral, parse_llm_json
+from lib.llm import build_prompt, call_mistral_with_validation
 from lib.pdf import chunk_text, extract_drive_file_ids, extract_pdf_text
 from lib.rag import embed_texts, load_embedding_model, select_top_k_chunks_with_embeddings
 
@@ -465,14 +465,14 @@ def main() -> None:
                 else:
                     selected = []
                 prompt = build_prompt(question, prompt_fields, selected, description)
-                response_text = call_mistral(
+                response_text, parsed = call_mistral_with_validation(
                     prompt,
+                    options=question.get("options", []),
                     api_key=config.mistral_api_key,
                     model=config.mistral_model,
                     temperature=config.mistral_temperature,
                     max_tokens=config.mistral_max_tokens,
                 )
-                parsed = parse_llm_json(response_text)
                 answers.append(
                     {
                         "question_id": question.get("question_id"),
