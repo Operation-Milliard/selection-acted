@@ -435,6 +435,11 @@ def main() -> None:
             data = json.loads(path.read_text(encoding="utf-8"))
             fields = data.get("fields", {})
             description = fields.get(config.description_column or "", "")
+            print(description)
+            if config.project_name_column and config.project_name_column in fields:
+                prompt_fields = {config.project_name_column: fields.get(config.project_name_column, "")}
+            else:
+                prompt_fields = {}
             grid_questions = data.get("grid_questions", [])
             files = data.get("files", [])
 
@@ -467,7 +472,7 @@ def main() -> None:
                     )
                 else:
                     selected = []
-                prompt = build_prompt(question, fields, selected, description)
+                prompt = build_prompt(question, prompt_fields, selected, description)
                 response_text = call_mistral(
                     prompt,
                     api_key=config.mistral_api_key,
