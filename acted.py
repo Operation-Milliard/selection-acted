@@ -18,7 +18,7 @@ from lib.google import (
     update_sheet_values,
 )
 from lib.llm import build_prompt, call_mistral_with_validation
-from lib.pdf import chunk_text, extract_drive_file_ids, extract_pdf_text
+from lib.pdf import chunk_text, chunk_text_smart, extract_drive_file_ids, extract_pdf_markdown, extract_pdf_text
 from lib.rag import embed_texts, load_embedding_model, select_top_k_chunks_with_embeddings
 
 
@@ -191,6 +191,10 @@ def export_projects(
     file_column: str,
     chunk_size_chars: int,
     chunk_overlap_chars: int,
+    chunk_min_chars: int,
+    chunk_max_chars: int,
+    chunk_overlap_sentences: int,
+    use_smart_chunking: bool,
     output_dir: Path,
 ) -> list[Path]:
     if not responses_rows:
@@ -225,7 +229,10 @@ def export_projects(
                 content = None
             if content is not None and info.get("mimeType") == "application/pdf":
                 try:
-                    text = extract_pdf_text(content)
+                    if use_smart_chunking:
+                        text = extract_pdf_markdown(content)
+                    else:
+                        text = extract_pdf_text(content)
                 except Exception as exc:
                     print(f"[{row_idx}] extract failed for {info.get('name', file_id)}: {exc}")
             elif content is not None:
@@ -236,7 +243,15 @@ def export_projects(
                 print(f"[{row_idx}] extracted {char_count} chars / {line_count} lines from {info.get('name', file_id)}")
             else:
                 print(f"[{row_idx}] no text extracted from {info.get('name', file_id)}")
-            chunks = chunk_text(text, size=chunk_size_chars, overlap=chunk_overlap_chars)
+            if use_smart_chunking:
+                chunks = chunk_text_smart(
+                    text,
+                    min_chars=chunk_min_chars,
+                    max_chars=chunk_max_chars,
+                    overlap_sentences=chunk_overlap_sentences,
+                )
+            else:
+                chunks = chunk_text(text, size=chunk_size_chars, overlap=chunk_overlap_chars)
             if chunks:
                 print(f"[{row_idx}] {len(chunks)} chunks for {info.get('name', file_id)}")
             files_payload.append(
@@ -411,6 +426,10 @@ def main() -> None:
             config.file_column,
             config.chunk_size_chars,
             config.chunk_overlap_chars,
+            config.chunk_min_chars,
+            config.chunk_max_chars,
+            config.chunk_overlap_sentences,
+            config.use_smart_chunking,
             output_dir,
         )
         print(f"Wrote {len(written)} project JSON files to {output_dir}")

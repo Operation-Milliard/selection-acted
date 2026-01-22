@@ -6,6 +6,9 @@ import yaml
 
 CHUNK_SIZE_CHARS = 4000
 CHUNK_OVERLAP_CHARS = 400
+CHUNK_MIN_CHARS = 500
+CHUNK_MAX_CHARS = 2000
+CHUNK_OVERLAP_SENTENCES = 1
 
 
 @dataclass
@@ -28,6 +31,10 @@ class AppConfig:
     results_write_mode: str
     chunk_size_chars: int
     chunk_overlap_chars: int
+    chunk_min_chars: int
+    chunk_max_chars: int
+    chunk_overlap_sentences: int
+    use_smart_chunking: bool
     embedding_model_name: str
     rag_top_k: int
     mistral_api_key: str | None
@@ -124,6 +131,21 @@ def load_config(path: str | None) -> AppConfig:
             env_or_default("CHUNK_OVERLAP_CHARS", output_cfg.get("chunk_overlap_chars", CHUNK_OVERLAP_CHARS))
             or CHUNK_OVERLAP_CHARS
         ),
+        chunk_min_chars=int(
+            env_or_default("CHUNK_MIN_CHARS", rag_cfg.get("chunk_min_chars", CHUNK_MIN_CHARS))
+            or CHUNK_MIN_CHARS
+        ),
+        chunk_max_chars=int(
+            env_or_default("CHUNK_MAX_CHARS", rag_cfg.get("chunk_max_chars", CHUNK_MAX_CHARS))
+            or CHUNK_MAX_CHARS
+        ),
+        chunk_overlap_sentences=int(
+            env_or_default("CHUNK_OVERLAP_SENTENCES", rag_cfg.get("chunk_overlap_sentences", CHUNK_OVERLAP_SENTENCES))
+            or CHUNK_OVERLAP_SENTENCES
+        ),
+        use_smart_chunking=str(
+            env_or_default("USE_SMART_CHUNKING", rag_cfg.get("use_smart_chunking", "true"))
+        ).lower() in ("true", "1", "yes"),
         embedding_model_name=env_or_default(
             "EMBEDDING_MODEL_NAME",
             rag_cfg.get("model_name", "intfloat/multilingual-e5-small"),

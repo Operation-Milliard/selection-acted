@@ -6,3 +6,4 @@ pypdf==4.3.1
 PyYAML==6.0.2
 requests==2.32.3
 sentence-transformers==3.0.1
+pymupdf4llm
