@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import base64
 import os
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email import encoders
 from io import BytesIO
+from pathlib import Path
+
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -11,6 +18,7 @@ from googleapiclient.http import MediaIoBaseDownload
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
 ]
 
 
@@ -112,3 +120,35 @@ def add_sheet(credentials, spreadsheet_id: str, title: str) -> None:
     service = build("sheets", "v4", credentials=credentials)
     body = {"requests": [{"addSheet": {"properties": {"title": title}}}]}
     service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+
+
+def send_email_with_attachment(
+    credentials,
+    to: str,
+    subject: str,
+    body: str,
+    attachment_path: Path,
+    from_name: str | None = None,
+) -> dict:
+    """Send email via Gmail API with HTML attachment."""
+    message = MIMEMultipart()
+    message["to"] = to
+    message["subject"] = subject
+    if from_name:
+        message["from"] = from_name
+
+    message.attach(MIMEText(body, "plain", "utf-8"))
+
+    with open(attachment_path, "rb") as f:
+        part = MIMEBase("text", "html")
+        part.set_payload(f.read())
+    encoders.encode_base64(part)
+    part.add_header(
+        "Content-Disposition",
+        f"attachment; filename={attachment_path.name}",
+    )
+    message.attach(part)
+
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+    service = build("gmail", "v1", credentials=credentials)
+    return service.users().messages().send(userId="me", body={"raw": raw}).execute()

@@ -15,7 +15,15 @@ from lib.google import (
     get_sheet_values,
     list_files_in_folder,
     list_sheet_titles,
+    send_email_with_attachment,
     update_sheet_values,
+)
+from lib.reviewer import (
+    assign_reviewers_round_robin,
+    build_email_body,
+    build_form_url,
+    find_html_reports,
+    load_reviewers,
 )
 from lib.html_report import convert_all_json_to_html
 from lib.llm import build_prompt, call_llm_with_validation
@@ -400,6 +408,84 @@ def update_status_column(
     return updated_count
 
 
+def send_review_emails(config: AppConfig, credentials, dry_run: bool = False) -> None:
+    """Assign reviewers to projects and send review emails with HTML reports."""
+    # Validate config
+    if not config.reviewers_file_path:
+        raise ValueError("Missing reviewers.file_path in config")
+    if not config.google_form_url:
+        raise ValueError("Missing reviewers.google_form_url in config")
+    if not config.form_project_field:
+        raise ValueError("Missing reviewers.form_project_field in config")
+
+    # Load reviewers
+    print(f"Loading reviewers from {config.reviewers_file_path}...")
+    reviewers = load_reviewers(config.reviewers_file_path)
+    print(f"  {len(reviewers)} reviewers found.")
+
+    # Find HTML reports
+    llm_dir = Path(config.llm_output_dir)
+    reports = find_html_reports(llm_dir)
+    print(f"Found {len(reports)} projects with HTML reports.")
+
+    if not reports:
+        print("No HTML reports found. Run --export-html first.")
+        return
+
+    # Assign reviewers
+    project_names = list(reports.keys())
+    print(f"\nAssigning reviewers (round-robin, {config.reviewers_per_project} per project)...")
+    assignments = assign_reviewers_round_robin(
+        project_names,
+        reviewers,
+        config.reviewers_per_project,
+    )
+
+    # Send emails
+    print("\nSending review emails...")
+    sent_count = 0
+    failed_count = 0
+
+    for project_name, assigned_reviewers in assignments.items():
+        html_path = reports[project_name]
+        form_url = build_form_url(
+            config.google_form_url,
+            config.form_project_field,
+            project_name,
+        )
+
+        for reviewer_email in assigned_reviewers:
+            subject = config.email_subject_template.format(project_name=project_name)
+            body = build_email_body(project_name, form_url, config.email_from_name)
+
+            if dry_run:
+                print(f"  [DRY-RUN] {project_name} -> {reviewer_email}")
+                sent_count += 1
+            else:
+                try:
+                    send_email_with_attachment(
+                        credentials,
+                        to=reviewer_email,
+                        subject=subject,
+                        body=body,
+                        attachment_path=html_path,
+                        from_name=config.email_from_name,
+                    )
+                    print(f"  OK {project_name} -> {reviewer_email}")
+                    sent_count += 1
+                except Exception as e:
+                    print(f"  FAILED {project_name} -> {reviewer_email}: {e}")
+                    failed_count += 1
+
+    # Summary
+    if dry_run:
+        print(f"\nDry-run complete: {sent_count} emails would be sent.")
+    else:
+        print(f"\nSummary: {sent_count} emails sent successfully.")
+        if failed_count:
+            print(f"         {failed_count} emails failed.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Dry-run: read grid + responses + drive folder.")
     parser.add_argument("--config", default=None, help="Path to config YAML")
@@ -432,6 +518,16 @@ def main() -> None:
         "--export-html",
         action="store_true",
         help="Export LLM answers as HTML reports",
+    )
+    parser.add_argument(
+        "--send-reviews",
+        action="store_true",
+        help="Assign reviewers and send review emails with HTML reports",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be done without actually sending emails",
     )
     args = parser.parse_args()
 
@@ -609,6 +705,9 @@ def main() -> None:
         llm_dir = Path(config.llm_output_dir)
         written = convert_all_json_to_html(llm_dir)
         print(f"Exported {len(written)} HTML reports to {llm_dir}")
+
+    if args.send_reviews:
+        send_review_emails(config, credentials, dry_run=args.dry_run)
 
     if args.mark_status:
         status_value = datetime.now().strftime("%Y-%m-%d %H:%M")

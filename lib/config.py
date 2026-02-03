@@ -42,6 +42,13 @@ class AppConfig:
     llm_model: str
     llm_temperature: float
     llm_max_tokens: int
+    # Reviewer assignment settings
+    reviewers_file_path: str | None
+    reviewers_per_project: int
+    google_form_url: str | None
+    form_project_field: str | None
+    email_subject_template: str
+    email_from_name: str
 
 
 def load_config(path: str | None) -> AppConfig:
@@ -58,6 +65,7 @@ def load_config(path: str | None) -> AppConfig:
     rag_cfg = data.get("rag", {})
     # Support both "llm" and legacy "mistral" config sections
     llm_cfg = data.get("llm", {}) or data.get("mistral", {})
+    reviewers_cfg = data.get("reviewers", {})
 
     def env_or_default(key: str, default: str | None) -> str | None:
         value = os.getenv(key)
@@ -174,4 +182,11 @@ def load_config(path: str | None) -> AppConfig:
             env_or_default("LLM_TEMPERATURE", llm_cfg.get("temperature", 0.2)) or 0.2
         ),
         llm_max_tokens=int(env_or_default("LLM_MAX_TOKENS", llm_cfg.get("max_tokens", 512)) or 512),
+        # Reviewer assignment settings
+        reviewers_file_path=reviewers_cfg.get("file_path"),
+        reviewers_per_project=int(reviewers_cfg.get("reviewers_per_project", 2)),
+        google_form_url=reviewers_cfg.get("google_form_url"),
+        form_project_field=reviewers_cfg.get("form_project_field"),
+        email_subject_template=reviewers_cfg.get("email_subject", "Review request: {project_name}"),
+        email_from_name=reviewers_cfg.get("email_from_name", "Selection Committee"),
     )

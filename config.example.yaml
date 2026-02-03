@@ -48,3 +48,22 @@ llm:
   model: mistral-small-latest
   temperature: 0.2
   max_tokens: 512
+
+# Reviewer assignment and email notifications
+# Used with --send-reviews flag
+reviewers:
+  # Text file with one reviewer email per line
+  file_path: reviewers.txt
+  # Number of reviewers assigned to each project
+  reviewers_per_project: 2
+  # Google Form URL for submitting reviews
+  # To find the pre-fill field ID:
+  #   1. Open your Google Form in edit mode
+  #   2. Click 3-dot menu -> "Get pre-filled link"
+  #   3. Fill in a test value for the project name field
+  #   4. Click "Get link" - URL will contain entry.XXXXXXXXX=test+value
+  google_form_url: "https://docs.google.com/forms/d/e/FORM_ID/viewform"
+  form_project_field: "entry.123456789"
+  # Email settings
+  email_subject: "Review request: {project_name}"
+  email_from_name: "Selection Committee"
