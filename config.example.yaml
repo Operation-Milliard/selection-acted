@@ -24,7 +24,21 @@ output:
 rag:
   model_name: intfloat/multilingual-e5-small
   top_k: 6
-mistral:
+  # Smart chunking options (structure-aware)
+  use_smart_chunking: true
+  chunk_min_chars: 500
+  chunk_max_chars: 2000
+  chunk_overlap_sentences: 1
+
+# LLM configuration - works with any OpenAI-compatible API
+llm:
+  # Base URL (optional, defaults to Mistral API)
+  # Examples:
+  #   Mistral: https://api.mistral.ai/v1
+  #   OpenAI: https://api.openai.com/v1
+  #   Ollama: http://localhost:11434/v1
+  #   vLLM: http://localhost:8000/v1
+  base_url: null
   api_key: ""
   model: mistral-small-latest
   temperature: 0.2

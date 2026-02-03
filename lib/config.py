@@ -37,10 +37,11 @@ class AppConfig:
     use_smart_chunking: bool
     embedding_model_name: str
     rag_top_k: int
-    mistral_api_key: str | None
-    mistral_model: str
-    mistral_temperature: float
-    mistral_max_tokens: int
+    llm_base_url: str | None
+    llm_api_key: str | None
+    llm_model: str
+    llm_temperature: float
+    llm_max_tokens: int
 
 
 def load_config(path: str | None) -> AppConfig:
@@ -55,7 +56,8 @@ def load_config(path: str | None) -> AppConfig:
     project_cfg = data.get("project", {})
     output_cfg = data.get("output", {})
     rag_cfg = data.get("rag", {})
-    mistral_cfg = data.get("mistral", {})
+    # Support both "llm" and legacy "mistral" config sections
+    llm_cfg = data.get("llm", {}) or data.get("mistral", {})
 
     def env_or_default(key: str, default: str | None) -> str | None:
         value = os.getenv(key)
@@ -152,11 +154,13 @@ def load_config(path: str | None) -> AppConfig:
         )
         or "intfloat/multilingual-e5-small",
         rag_top_k=int(env_or_default("RAG_TOP_K", rag_cfg.get("top_k", 6)) or 6),
-        mistral_api_key=env_or_default("MISTRAL_API_KEY", mistral_cfg.get("api_key")),
-        mistral_model=env_or_default("MISTRAL_MODEL", mistral_cfg.get("model", "mistral-large-latest"))
+        llm_base_url=env_or_default("LLM_BASE_URL", llm_cfg.get("base_url")),
+        llm_api_key=env_or_default("LLM_API_KEY", llm_cfg.get("api_key"))
+        or env_or_default("MISTRAL_API_KEY", None),  # Backward compat
+        llm_model=env_or_default("LLM_MODEL", llm_cfg.get("model", "mistral-large-latest"))
         or "mistral-large-latest",
-        mistral_temperature=float(
-            env_or_default("MISTRAL_TEMPERATURE", mistral_cfg.get("temperature", 0.2)) or 0.2
+        llm_temperature=float(
+            env_or_default("LLM_TEMPERATURE", llm_cfg.get("temperature", 0.2)) or 0.2
         ),
-        mistral_max_tokens=int(env_or_default("MISTRAL_MAX_TOKENS", mistral_cfg.get("max_tokens", 512)) or 512),
+        llm_max_tokens=int(env_or_default("LLM_MAX_TOKENS", llm_cfg.get("max_tokens", 512)) or 512),
     )

@@ -17,7 +17,7 @@ from lib.google import (
     list_sheet_titles,
     update_sheet_values,
 )
-from lib.llm import build_prompt, call_mistral_with_validation
+from lib.llm import build_prompt, call_llm_with_validation
 from lib.pdf import chunk_text, chunk_text_smart, extract_drive_file_ids, extract_pdf_markdown, extract_pdf_text
 from lib.rag import embed_texts, load_embedding_model, select_top_k_chunks_with_embeddings
 
@@ -435,8 +435,8 @@ def main() -> None:
         print(f"Wrote {len(written)} project JSON files to {output_dir}")
 
     if args.llm_generate:
-        if not config.mistral_api_key:
-            raise ValueError("Missing Mistral API key (set MISTRAL_API_KEY or config.mistral.api_key)")
+        if not config.llm_api_key and not config.llm_base_url:
+            raise ValueError("Missing LLM API key (set LLM_API_KEY or config.llm.api_key)")
         model = load_embedding_model(config.embedding_model_name)
         input_dir = Path(config.projects_output_dir)
         output_dir = Path(config.llm_output_dir)
@@ -484,13 +484,14 @@ def main() -> None:
                 else:
                     selected = []
                 prompt = build_prompt(question, prompt_fields, selected, description)
-                response_text, parsed = call_mistral_with_validation(
+                response_text, parsed = call_llm_with_validation(
                     prompt,
                     options=question.get("options", []),
-                    api_key=config.mistral_api_key,
-                    model=config.mistral_model,
-                    temperature=config.mistral_temperature,
-                    max_tokens=config.mistral_max_tokens,
+                    api_key=config.llm_api_key,
+                    model=config.llm_model,
+                    temperature=config.llm_temperature,
+                    max_tokens=config.llm_max_tokens,
+                    base_url=config.llm_base_url,
                 )
                 qcm_letter = parsed.get("qcm", "")
                 qcm_text = ""
@@ -515,11 +516,11 @@ def main() -> None:
             output = {
                 **data,
                 "llm": {
-                    "model": config.mistral_model,
-                    "temperature": config.mistral_temperature,
-                    "max_tokens": config.mistral_max_tokens,
+                    "base_url": config.llm_base_url,
+                    "model": config.llm_model,
+                    "temperature": config.llm_temperature,
+                    "max_tokens": config.llm_max_tokens,
                     "rag_top_k": config.rag_top_k,
-                    "note": "Rerank could improve chunk selection if quality is insufficient.",
                 },
                 "answers": answers,
             }

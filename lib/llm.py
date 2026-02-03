@@ -5,8 +5,37 @@ import re
 import requests
 
 
-def call_mistral(prompt: str, api_key: str, model: str, temperature: float, max_tokens: int) -> str:
-    url = "https://api.mistral.ai/v1/chat/completions"
+MISTRAL_BASE_URL = "https://api.mistral.ai/v1"
+
+
+def call_llm(
+    prompt: str,
+    api_key: str,
+    model: str,
+    temperature: float,
+    max_tokens: int,
+    base_url: str | None = None,
+) -> str:
+    """
+    Call any OpenAI-compatible LLM API.
+
+    Args:
+        prompt: The prompt to send
+        api_key: API key for authentication
+        model: Model name (e.g., "mistral-large-latest", "gpt-4", "llama3")
+        temperature: Sampling temperature
+        max_tokens: Maximum tokens in response
+        base_url: API base URL. Defaults to Mistral API.
+                  Examples:
+                  - Mistral: https://api.mistral.ai/v1
+                  - OpenAI: https://api.openai.com/v1
+                  - Local Ollama: http://localhost:11434/v1
+                  - Local vLLM: http://localhost:8000/v1
+    """
+    if base_url is None:
+        base_url = MISTRAL_BASE_URL
+
+    url = f"{base_url.rstrip('/')}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {
         "model": model,
@@ -14,10 +43,16 @@ def call_mistral(prompt: str, api_key: str, model: str, temperature: float, max_
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    response = requests.post(url, headers=headers, json=payload, timeout=60)
+    response = requests.post(url, headers=headers, json=payload, timeout=120)
     response.raise_for_status()
     data = response.json()
+    print(data["choices"][0]["message"]["content"])
     return data["choices"][0]["message"]["content"]
+
+
+# Backward compatibility alias
+def call_mistral(prompt: str, api_key: str, model: str, temperature: float, max_tokens: int) -> str:
+    return call_llm(prompt, api_key, model, temperature, max_tokens, base_url=MISTRAL_BASE_URL)
 
 
 def build_prompt(question: dict, fields: dict, chunks: list[dict], description: str) -> str:
@@ -33,17 +68,16 @@ def build_prompt(question: dict, fields: dict, chunks: list[dict], description: 
     )
     if options:
         options_text = "\n".join(f"{chr(65 + i)}. {opt}" for i, opt in enumerate(options))
+        valid_letters = ", ".join(chr(65 + i) for i in range(len(options)))
     else:
         options_text = "Aucune option fournie."
+        valid_letters = ""
 
     return (
         "Tu es un assistant d'analyse de dossiers de projets.\n"
         "Ta tache: repondre a la question a partir des reponses du formulaire et des extraits.\n"
-        "Ne cherche pas de liens indirects entre la question et les extrait, si des éléments de réponse ne sont pas explicitement mentionnés, ne les infère pas."
-        "Retourne uniquement un JSON strict avec les cles: text, qcm.\n"
-        "Pour qcm, retourne uniquement la lettre (A, B, C, etc.) correspondant a l'option choisie.\n"
-        "Si l'information n'est pas presente dans les documents, choisis l'option qui correspond a l'absence d'information (ex: 'Non mentionne', 'Pas d'information', etc.).\n"
-        "Utilise \"UNKNOWN\" uniquement si aucune option ne correspond, meme pour l'absence d'information.\n\n"
+        "Ne cherche pas de liens indirects entre la question et les extraits. "
+        "Si des elements de reponse ne sont pas explicitement mentionnes, ne les infere pas.\n\n"
         f"QuestionID: {question_id}\n"
         f"Question: {question_text}\n"
         f"Contexte: {context}\n\n"
@@ -54,7 +88,13 @@ def build_prompt(question: dict, fields: dict, chunks: list[dict], description: 
         "Extraits pertinents:\n"
         f"{chunks_text}\n\n"
         "Options QCM:\n"
-        f"{options_text}\n"
+        f"{options_text}\n\n"
+        "INSTRUCTIONS DE FORMAT:\n"
+        f"- Reponds UNIQUEMENT avec un JSON: {{\"text\": \"...\", \"qcm\": \"...\"}}\n"
+        f"- Pour qcm, utilise UNIQUEMENT une lettre parmi: {valid_letters}\n"
+        "- Si l'information est absente des documents, choisis l'option qui indique cette absence.\n"
+        "- Utilise UNKNOWN seulement si aucune option ne convient.\n"
+        f"- Exemple de reponse valide: {{\"text\": \"Le projet mentionne X.\", \"qcm\": \"A\"}}\n"
     )
 
 
@@ -82,18 +122,19 @@ def validate_qcm(answer: str, options: list[str]) -> bool:
     return answer.upper() in valid_letters
 
 
-def call_mistral_with_validation(
+def call_llm_with_validation(
     prompt: str,
     options: list[str],
     api_key: str,
     model: str,
     temperature: float,
     max_tokens: int,
+    base_url: str | None = None,
     max_retries: int = 2,
 ) -> tuple[str, dict]:
-    """Call Mistral and validate QCM response, retry if invalid."""
+    """Call LLM and validate QCM response, retry if invalid."""
     for attempt in range(max_retries + 1):
-        response_text = call_mistral(prompt, api_key, model, temperature, max_tokens)
+        response_text = call_llm(prompt, api_key, model, temperature, max_tokens, base_url)
         parsed = parse_llm_json(response_text)
         qcm = parsed.get("qcm", "")
 
@@ -107,3 +148,19 @@ def call_mistral_with_validation(
     parsed["qcm"] = "UNKNOWN"
     parsed["validation_failed"] = True
     return response_text, parsed
+
+
+# Backward compatibility alias
+def call_mistral_with_validation(
+    prompt: str,
+    options: list[str],
+    api_key: str,
+    model: str,
+    temperature: float,
+    max_tokens: int,
+    max_retries: int = 2,
+) -> tuple[str, dict]:
+    return call_llm_with_validation(
+        prompt, options, api_key, model, temperature, max_tokens,
+        base_url=MISTRAL_BASE_URL, max_retries=max_retries
+    )
