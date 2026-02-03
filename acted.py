@@ -17,6 +17,7 @@ from lib.google import (
     list_sheet_titles,
     update_sheet_values,
 )
+from lib.html_report import convert_all_json_to_html
 from lib.llm import build_prompt, call_llm_with_validation
 from lib.pdf import chunk_text, chunk_text_smart, extract_drive_file_ids, extract_pdf_markdown, extract_pdf_text
 from lib.rag import embed_texts, load_embedding_model, select_top_k_chunks_with_embeddings
@@ -387,6 +388,11 @@ def main() -> None:
         action="store_true",
         help="Write LLM answers to one sheet per project",
     )
+    parser.add_argument(
+        "--export-html",
+        action="store_true",
+        help="Export LLM answers as HTML reports",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -536,6 +542,11 @@ def main() -> None:
             config.results_spreadsheet_id,
             config.results_write_mode,
         )
+
+    if args.export_html:
+        llm_dir = Path(config.llm_output_dir)
+        written = convert_all_json_to_html(llm_dir)
+        print(f"Exported {len(written)} HTML reports to {llm_dir}")
 
     if args.mark_status:
         status_value = datetime.now().strftime("%Y-%m-%d %H:%M")
