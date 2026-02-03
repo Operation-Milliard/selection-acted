@@ -30,6 +30,31 @@ from lib.rag import embed_texts, load_embedding_model, select_top_k_chunks_with_
 
 
 
+def validate_columns(
+    headers: list[str],
+    config: AppConfig,
+) -> list[str]:
+    """Validate configured columns exist in headers.
+
+    Returns list of missing column descriptions.
+    """
+    missing = []
+    print("HEADERS:")
+    print(headers)
+    for col in config.file_columns:
+        if col not in headers:
+            missing.append(f"file_columns: {col}")
+
+    if config.project_name_column and config.project_name_column not in headers:
+        missing.append(f"name_column: {config.project_name_column}")
+
+    for field in config.prompt_fields:
+        if field not in headers:
+            missing.append(f"prompt_fields: {field}")
+
+    return missing
+
+
 def sanitize_sheet_title(value: str) -> str:
     if not value:
         return "Project"
@@ -117,7 +142,7 @@ def build_report(
     responses_rows: list[list[str]],
     drive_files: list[dict],
     project_name_column: str | None,
-    file_column: str,
+    file_columns: list[str],
 ) -> dict:
     grid_questions = parse_grid(grid_rows)
 
@@ -134,15 +159,23 @@ def build_report(
     if project_name_column in headers:
         project_name_idx = headers.index(project_name_column)
 
-    if file_column not in headers:
-        raise ValueError(f"Missing file column '{file_column}' in responses sheet")
-    file_column_idx = headers.index(file_column)
+    # Build indices for file columns that exist in headers
+    file_column_indices = []
+    for file_column in file_columns:
+        if file_column in headers:
+            file_column_indices.append(headers.index(file_column))
 
     responses = []
     for row_idx, row in enumerate(response_rows, start=2):
         project_name = row[project_name_idx] if project_name_idx is not None and len(row) > project_name_idx else ""
         row_map = {headers[i]: row[i] for i in range(min(len(headers), len(row)))}
-        file_ids = extract_drive_file_ids(row[file_column_idx] if len(row) > file_column_idx else "")
+
+        # Extract file IDs from all file columns
+        file_ids = []
+        for file_column_idx in file_column_indices:
+            cell_value = row[file_column_idx] if len(row) > file_column_idx else ""
+            file_ids.extend(extract_drive_file_ids(cell_value))
+
         file_info = []
         for file_id in file_ids:
             info = drive_files_index.get(file_id, {"id": file_id, "name": "(not in folder list)"})
@@ -189,7 +222,7 @@ def export_projects(
     responses_rows: list[list[str]],
     drive_files: list[dict],
     project_name_column: str | None,
-    file_column: str,
+    file_columns: list[str],
     chunk_size_chars: int,
     chunk_overlap_chars: int,
     chunk_min_chars: int,
@@ -209,15 +242,22 @@ def export_projects(
     if project_name_column in headers:
         project_name_idx = headers.index(project_name_column)
 
-    if file_column not in headers:
-        raise ValueError(f"Missing file column '{file_column}' in responses sheet")
-    file_column_idx = headers.index(file_column)
+    # Build indices for file columns that exist in headers
+    file_column_indices = []
+    for file_column in file_columns:
+        if file_column in headers:
+            file_column_indices.append(headers.index(file_column))
 
     written = []
     for row_idx, row in enumerate(rows, start=2):
         project_name = row[project_name_idx] if project_name_idx is not None and len(row) > project_name_idx else ""
         row_map = {headers[i]: row[i] for i in range(min(len(headers), len(row)))}
-        file_ids = extract_drive_file_ids(row[file_column_idx] if len(row) > file_column_idx else "")
+
+        # Extract file IDs from all file columns
+        file_ids = []
+        for file_column_idx in file_column_indices:
+            cell_value = row[file_column_idx] if len(row) > file_column_idx else ""
+            file_ids.extend(extract_drive_file_ids(cell_value))
 
         files_payload = []
         for file_id in file_ids:
@@ -398,6 +438,30 @@ def main() -> None:
     config = load_config(args.config)
     credentials, grid_rows, responses_rows, drive_files = load_sources(config)
 
+    # Validate columns interactively
+    if responses_rows:
+        headers = responses_rows[0]
+        missing = validate_columns(headers, config)
+
+        print("\nChecking column configuration...")
+        for col in config.file_columns:
+            status = "✓" if col in headers else "✗"
+            print(f"  {status} file_columns: {col}")
+        if config.project_name_column:
+            status = "✓" if config.project_name_column in headers else "✗"
+            print(f"  {status} name_column: {config.project_name_column}")
+        for field in config.prompt_fields:
+            status = "✓" if field in headers else "✗"
+            print(f"  {status} prompt_fields: {field}")
+
+        if missing:
+            print(f"\nWarning: {len(missing)} column(s) not found.")
+            response = input("Continue anyway? [y/N]: ").strip().lower()
+            if response != "y":
+                raise SystemExit(0)
+        else:
+            print("All columns found.\n")
+
     grid_questions = parse_grid(grid_rows)
 
     report = build_report(
@@ -405,7 +469,7 @@ def main() -> None:
         responses_rows,
         drive_files,
         config.project_name_column,
-        config.file_column,
+        config.file_columns,
     )
 
     output_path = Path(config.dry_run_report_path)
@@ -429,7 +493,7 @@ def main() -> None:
             responses_rows,
             drive_files,
             config.project_name_column,
-            config.file_column,
+            config.file_columns,
             config.chunk_size_chars,
             config.chunk_overlap_chars,
             config.chunk_min_chars,
@@ -451,12 +515,8 @@ def main() -> None:
         for path in sorted(input_dir.glob("*.json")):
             data = json.loads(path.read_text(encoding="utf-8"))
             fields = data.get("fields", {})
-            description = fields.get(config.description_column or "", "")
-            print(description)
-            if config.project_name_column and config.project_name_column in fields:
-                prompt_fields = {config.project_name_column: fields.get(config.project_name_column, "")}
-            else:
-                prompt_fields = {}
+            # Build prompt_fields dict from config.prompt_fields list
+            prompt_fields = {key: fields.get(key, "") for key in config.prompt_fields if key in fields}
             grid_questions = data.get("grid_questions", [])
             files = data.get("files", [])
 
@@ -489,7 +549,9 @@ def main() -> None:
                     )
                 else:
                     selected = []
-                prompt = build_prompt(question, prompt_fields, selected, description)
+                prompt = build_prompt(question, prompt_fields, selected)
+                print("PROMPT:")
+                print(prompt)
                 response_text, parsed = call_llm_with_validation(
                     prompt,
                     options=question.get("options", []),

@@ -21,8 +21,8 @@ class AppConfig:
     responses_tab: str
     drive_folder_id: str
     project_name_column: str | None
-    description_column: str | None
-    file_column: str
+    prompt_fields: list[str]
+    file_columns: list[str]
     status_column: str
     dry_run_report_path: str
     projects_output_dir: str
@@ -83,9 +83,20 @@ def load_config(path: str | None) -> AppConfig:
     if missing:
         raise ValueError(f"Missing config keys: {', '.join(missing)}")
 
-    file_column = env_or_default("FILE_COLUMN", project_cfg.get("file_column"))
-    if not file_column:
-        raise ValueError("Missing project.file_column in config")
+    # Handle file_columns (list) with backward compatibility for file_column (string)
+    file_columns = project_cfg.get("file_columns")
+    if file_columns is None:
+        # Backward compatibility: convert single file_column to list
+        file_column = env_or_default("FILE_COLUMN", project_cfg.get("file_column"))
+        if file_column:
+            file_columns = [file_column]
+        else:
+            file_columns = []  # Empty is now allowed - validated interactively
+    elif not file_columns:
+        file_columns = []  # Empty is now allowed - validated interactively
+
+    # Handle prompt_fields (list)
+    prompt_fields = project_cfg.get("prompt_fields", [])
 
     results_spreadsheet_id = env_or_default("RESULTS_SPREADSHEET_ID", output_cfg.get("results_spreadsheet_id"))
     if not results_spreadsheet_id:
@@ -101,8 +112,8 @@ def load_config(path: str | None) -> AppConfig:
         or "Form responses 1",
         drive_folder_id=drive_folder_id,
         project_name_column=env_or_default("PROJECT_NAME_COLUMN", project_cfg.get("name_column")),
-        description_column=env_or_default("PROJECT_DESCRIPTION_COLUMN", project_cfg.get("description_column")),
-        file_column=file_column,
+        prompt_fields=prompt_fields,
+        file_columns=file_columns,
         status_column=env_or_default("STATUS_COLUMN", project_cfg.get("status_column", "Status")) or "Status",
         dry_run_report_path=env_or_default(
             "DRY_RUN_REPORT_PATH",

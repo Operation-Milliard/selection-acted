@@ -10,9 +10,14 @@ google:
     folder_id: gdrive folder id
 project:
   name_column: Nom de la structure
-  description_column: Description Du Projet
-  file_column: Fichiers
   status_column: Status
+  # Form fields to include in LLM prompt
+  prompt_fields:
+    - Nom de la structure
+    - Description Du Projet
+  # Columns containing files for RAG
+  file_columns:
+    - Fichiers
 output:
   dry_run_report_path: out/dry_run_report.json
   projects_output_dir: out/projects

@@ -55,7 +55,7 @@ def call_mistral(prompt: str, api_key: str, model: str, temperature: float, max_
     return call_llm(prompt, api_key, model, temperature, max_tokens, base_url=MISTRAL_BASE_URL)
 
 
-def build_prompt(question: dict, fields: dict, chunks: list[dict], description: str) -> str:
+def build_prompt(question: dict, fields: dict, chunks: list[dict]) -> str:
     options = question.get("options") or []
     context = question.get("context") or ""
     question_text = question.get("question") or ""
@@ -81,8 +81,6 @@ def build_prompt(question: dict, fields: dict, chunks: list[dict], description: 
         f"QuestionID: {question_id}\n"
         f"Question: {question_text}\n"
         f"Contexte: {context}\n\n"
-        "Description du projet:\n"
-        f"{description}\n\n"
         "Reponses formulaire:\n"
         f"{fields_text}\n\n"
         "Extraits pertinents:\n"
