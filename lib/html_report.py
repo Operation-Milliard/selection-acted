@@ -5,6 +5,42 @@ import json
 from pathlib import Path
 
 
+def compute_average_grade(qcm_counts: dict[str, int]) -> tuple[float, str]:
+    """Compute average grade from QCM letter counts.
+
+    Returns (numeric_average, letter_grade) where letter_grade includes +/-.
+    """
+    values = {"A": 4, "B": 3, "C": 2, "D": 1}
+    total = sum(qcm_counts.values())
+    if total == 0:
+        return 0.0, "N/A"
+
+    weighted_sum = sum(values[letter] * count for letter, count in qcm_counts.items())
+    avg = weighted_sum / total
+
+    # Convert to letter grade with +/-
+    if avg >= 3.67:
+        grade = "D"
+    elif avg >= 3.33:
+        grade = "D+"
+    elif avg >= 3.0:
+        grade = "C-"
+    elif avg >= 2.67:
+        grade = "C"
+    elif avg >= 2.33:
+        grade = "C+"
+    elif avg >= 2.0:
+        grade = "B-"
+    elif avg >= 1.67:
+        grade = "B"
+    elif avg >= 1.33:
+        grade = "B+"
+    else:
+        grade = "A"
+
+    return avg, grade
+
+
 def generate_html_report(data: dict) -> str:
     """Generate an HTML report from LLM answer JSON data."""
     project_name = html.escape(data.get("project_name", "Unknown"))
@@ -12,6 +48,15 @@ def generate_html_report(data: dict) -> str:
     fields = data.get("fields", {})
     answers = data.get("answers", [])
     llm_info = data.get("llm", {})
+
+    # Count QCM letter occurrences
+    qcm_counts = {"A": 0, "B": 0, "C": 0, "D": 0}
+    for answer in answers:
+        letter = answer.get("qcm", "").upper()
+        if letter in qcm_counts:
+            qcm_counts[letter] += 1
+
+    avg_numeric, avg_grade = compute_average_grade(qcm_counts)
 
     fields_html = ""
     for key, value in fields.items():
@@ -188,7 +233,23 @@ def generate_html_report(data: dict) -> str:
             border-radius: 6px;
             font-size: 0.85em;
             color: #666;
+            margin-bottom: 10px;
+        }}
+        .qcm-summary {{
+            background: #e8f5e9;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            color: #2e7d32;
             margin-bottom: 20px;
+        }}
+        .avg-grade {{
+            display: inline-block;
+            background: #2e7d32;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: bold;
         }}
     </style>
 </head>
@@ -199,6 +260,16 @@ def generate_html_report(data: dict) -> str:
         Modèle: {html.escape(llm_info.get('model', 'N/A'))} |
         Température: {llm_info.get('temperature', 'N/A')} |
         Top-K RAG: {llm_info.get('rag_top_k', 'N/A')}
+    </div>
+
+    <div class="qcm-summary">
+        <strong>Répartition QCM:</strong>
+        A: {qcm_counts['A']} |
+        B: {qcm_counts['B']} |
+        C: {qcm_counts['C']} |
+        D: {qcm_counts['D']}
+        &nbsp;&nbsp;—&nbsp;&nbsp;
+        <strong>Moyenne: <span class="avg-grade">{avg_grade}</span></strong> ({avg_numeric:.2f})
     </div>
 
     <h2>Informations du projet</h2>
