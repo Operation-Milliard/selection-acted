@@ -50,11 +50,6 @@ def call_llm(
     return data["choices"][0]["message"]["content"]
 
 
-# Backward compatibility alias
-def call_mistral(prompt: str, api_key: str, model: str, temperature: float, max_tokens: int) -> str:
-    return call_llm(prompt, api_key, model, temperature, max_tokens, base_url=MISTRAL_BASE_URL)
-
-
 def build_prompt(question: dict, fields: dict, chunks: list[dict]) -> str:
     options = question.get("options") or []
     context = question.get("context") or ""
@@ -146,19 +141,3 @@ def call_llm_with_validation(
     parsed["qcm"] = "UNKNOWN"
     parsed["validation_failed"] = True
     return response_text, parsed
-
-
-# Backward compatibility alias
-def call_mistral_with_validation(
-    prompt: str,
-    options: list[str],
-    api_key: str,
-    model: str,
-    temperature: float,
-    max_tokens: int,
-    max_retries: int = 2,
-) -> tuple[str, dict]:
-    return call_llm_with_validation(
-        prompt, options, api_key, model, temperature, max_tokens,
-        base_url=MISTRAL_BASE_URL, max_retries=max_retries
-    )

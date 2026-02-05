@@ -212,3 +212,4 @@ __marimo__/
 
 # Local project files
 config.yaml
+secrets/

@@ -33,6 +33,8 @@ def chunk_text(text: str, size: int, overlap: int) -> list[dict]:
     """Legacy fixed-size character chunking."""
     if not text:
         return []
+    if overlap >= size:
+        raise ValueError(f"overlap ({overlap}) must be less than size ({size})")
     chunks = []
     start = 0
     length = len(text)
@@ -47,7 +49,7 @@ def chunk_text(text: str, size: int, overlap: int) -> list[dict]:
         )
         if end == length:
             break
-        start = max(0, end - overlap)
+        start = end - overlap
     return chunks
 
 

@@ -66,7 +66,7 @@ def validate_columns(
 def sanitize_sheet_title(value: str) -> str:
     if not value:
         return "Project"
-    cleaned = re.sub(r"[:\\\\/?*\\[\\]]", "_", value)
+    cleaned = re.sub(r"[:\\/?\*\[\]]", "_", value)
     cleaned = cleaned.strip()
     return cleaned or "Project"
 
